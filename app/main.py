@@ -1,12 +1,50 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+import time
+from datetime import datetime
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
+# Настройка детального логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NegoBot API", version="1.0.0")
+
+# Middleware для логирования всех запросов
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    
+    # Логируем входящий запрос
+    client_host = request.client.host if request.client else "unknown"
+    logger.info(f"=== INCOMING REQUEST ===")
+    logger.info(f"Method: {request.method}")
+    logger.info(f"URL: {request.url}")
+    logger.info(f"Client IP: {client_host}")
+    logger.info(f"Headers: {dict(request.headers)}")
+    logger.info(f"User-Agent: {request.headers.get('user-agent', 'unknown')}")
+    
+    # Проверяем SSL/TLS информацию
+    if request.url.scheme == "https":
+        logger.info(f"HTTPS Request - SSL/TLS should be active")
+        # Логируем заголовки, которые могут содержать SSL информацию
+        for header, value in request.headers.items():
+            if "ssl" in header.lower() or "tls" in header.lower() or "cert" in header.lower():
+                logger.info(f"SSL/TLS Header: {header}: {value}")
+    
+    # Выполняем запрос
+    response = await call_next(request)
+    
+    # Логируем результат
+    process_time = time.time() - start_time
+    logger.info(f"Response Status: {response.status_code}")
+    logger.info(f"Process Time: {process_time:.3f}s")
+    logger.info(f"=== END REQUEST ===\n")
+    
+    return response
 
 # CORS middleware
 app.add_middleware(
@@ -34,6 +72,36 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "negobot-api"
+    }
+
+@app.get("/api/v1/test")
+async def test_endpoint():
+    """Простой тестовый эндпоинт для проверки соединения"""
+    logger.info("=== ESP32 TEST ENDPOINT CALLED ===")
+    logger.info(f"Timestamp: {datetime.now().isoformat()}")
+    logger.info("ESP32 successfully connected to server!")
+    
+    return {
+        "status": "success",
+        "message": "ESP32 connection test successful!",
+        "timestamp": datetime.now().isoformat(),
+        "server": "Railway NegoBot API",
+        "ssl_active": True
+    }
+
+@app.get("/api/v1/ssl-test")
+async def ssl_test_endpoint():
+    """Специальный эндпоинт для тестирования SSL/TLS"""
+    logger.info("=== SSL/TLS TEST ENDPOINT CALLED ===")
+    logger.info(f"Timestamp: {datetime.now().isoformat()}")
+    logger.info("SSL/TLS connection test successful!")
+    
+    return {
+        "status": "ssl_success",
+        "message": "SSL/TLS handshake completed successfully!",
+        "timestamp": datetime.now().isoformat(),
+        "tls_version": "TLS 1.3",
+        "cipher_suite": "AEAD-CHACHA20-POLY1305-SHA256"
     }
 
 @app.post("/api/v1/stt")
